@@ -19,6 +19,7 @@ interface Opts {
 export class IdrisClient {
   private debug: boolean
   private input: Writable
+  private listening: boolean
   private messageBuffer: string
   private output: Readable
   private registry: Record<string, Resolver>
@@ -29,14 +30,17 @@ export class IdrisClient {
     if (options.replyCallback) this.replyCallback = options.replyCallback
     this.debug = Boolean(options.debug)
 
+    this.listening = true
     this.messageBuffer = ""
     this.registry = {}
     this.reqCounter = 0
     this.input = input
     this.output = output
     this.output.on("data", (chunk: Buffer | string) => {
-      this.messageBuffer = this.messageBuffer + chunk.toString("utf8")
-      this.consumeOutput()
+      if (this.listening) {
+        this.messageBuffer = this.messageBuffer + chunk.toString("utf8")
+        this.consumeOutput()
+      }
     })
   }
 
@@ -84,6 +88,15 @@ export class IdrisClient {
       this.registry[req.id] = { requestType: req.type, resFn: res }
       this.input.write(serialisedReq, "utf8")
     })
+  }
+
+  /**
+   * Manually close the listener. Required for now, as the Idris 2 process will
+   * write non-protocol strings to STDOUT when it is killed, which crashes the
+   * client.
+   */
+  public close(): void {
+    this.listening = false
   }
 
   /**
